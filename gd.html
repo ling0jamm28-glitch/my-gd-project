@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Geometry Dash Clone</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #1a1a2e; overflow: hidden; height: 100%; }
+  canvas { display: block; margin: 0 auto; background: linear-gradient(#2b2b52, #1a1a2e); }
+  #ui {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    color: white; font-family: Arial, sans-serif; font-size: 20px; text-align: center;
+    user-select: none;
+  }
+  #msg {
+    position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%);
+    color: white; font-family: Arial, sans-serif; font-size: 28px; text-align: center;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div id="ui">Attempt <span id="attempt">1</span> — Progress: <span id="progress">0</span>%</div>
+<div id="msg">You Died! Press SPACE / Click to retry</div>
+<canvas id="game" width="900" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const GROUND_Y = H - 60;
+
+let level = [
+  {type:'spike', x: 600},
+  {type:'block', x: 750, w: 40, h: 40},
+  {type:'spike', x: 900},
+  {type:'spike', x: 940},
+  {type:'block', x: 1100, w: 40, h: 80},
+  {type:'spike', x: 1300},
+  {type:'gap', x: 1450, w: 100},
+  {type:'spike', x: 1650},
+  {type:'block', x: 1800, w: 40, h: 40},
+  {type:'spike', x: 1950},
+  {type:'spike', x: 1990},
+  {type:'spike', x: 2030},
+  {type:'block', x: 2200, w: 40, h: 120},
+  {type:'spike', x: 2450},
+  {type:'gap', x: 2600, w: 120},
+  {type:'spike', x: 2850},
+  {type:'spike', x: 2890},
+];
+const LEVEL_LENGTH = 3200;
+
+const SPEED = 5;
+const GRAVITY = 0.8;
+const JUMP_FORCE = -13;
+
+let player, scrollX, gameOver, attempt;
+
+function resetGame() {
+  player = { x: 100, y: GROUND_Y - 30, w: 30, h: 30, vy: 0, onGround: true, rot: 0 };
+  scrollX = 0;
+  gameOver = false;
+  document.getElementById('msg').style.display = 'none';
+}
+
+attempt = 1;
+resetGame();
+
+function jump() {
+  if (gameOver) {
+    attempt++;
+    document.getElementById('attempt').textContent = attempt;
+    resetGame();
+    return;
+  }
+  if (player.onGround) {
+    player.vy = JUMP_FORCE;
+    player.onGround = false;
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); }
+});
+canvas.addEventListener('mousedown', jump);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); jump(); });
+
+function getGapAt(worldX) {
+  for (const obs of level) {
+    if (obs.type === 'gap' && worldX >= obs.x && worldX <= obs.x + obs.w) return true;
+  }
+  return false;
+}
+
+function update() {
+  if (gameOver) return;
+
+  scrollX += SPEED;
+  const worldPlayerX = player.x + scrollX;
+
+  player.vy += GRAVITY;
+  player.y += player.vy;
+
+  const overGap = getGapAt(worldPlayerX + player.w / 2);
+  const floorY = GROUND_Y - player.h;
+
+  if (!overGap && player.y >= floorY) {
+    player.y = floorY;
+    player.vy = 0;
+    player.onGround = true;
+  } else if (overGap && player.y >= GROUND_Y) {
+    die();
+    return;
+  } else {
+    player.onGround = false;
+  }
+
+  if (!player.onGround) player.rot += 0.15;
+  else player.rot = 0;
+
+  for (const obs of level) {
+    const ox = obs.x - scrollX;
+    if (obs.type === 'spike') {
+      const sx = ox, sy = GROUND_Y, size = 30;
+      if (rectCircleSpikeCollide(player, sx, sy, size)) { die(); return; }
+    } else if (obs.type === 'block') {
+      const by = GROUND_Y - obs.h;
+      if (rectsCollide(player.x, player.y, player.w, player.h, ox, by, obs.w, obs.h)) {
+        die(); return;
+      }
+    }
+  }
+
+  if (scrollX > LEVEL_LENGTH) {
+    win();
+  }
+
+  const pct = Math.min(100, Math.floor((scrollX / LEVEL_LENGTH) * 100));
+  document.getElementById('progress').textContent = pct;
+}
+
+function rectsCollide(x1,y1,w1,h1,x2,y2,w2,h2) {
+  return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+}
+
+function rectCircleSpikeCollide(p, sx, sy, size) {
+  const spikeLeft = sx, spikeTop = sy - size;
+  return rectsCollide(p.x, p.y, p.w, p.h, spikeLeft + 6, spikeTop, size - 12, size);
+}
+
+function die() {
+  gameOver = true;
+  document.getElementById('msg').textContent = 'You Died! Press SPACE / Click to retry';
+  document.getElementById('msg').style.display = 'block';
+}
+
+function win() {
+  gameOver = true;
+  document.getElementById('msg').textContent = 'Level Complete! Press SPACE / Click to replay';
+  document.getElementById('msg').style.display = 'block';
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.fillStyle = '#0f3460';
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  ctx.strokeStyle = '#00d4ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y);
+  ctx.lineTo(W, GROUND_Y);
+  ctx.stroke();
+
+  for (const obs of level) {
+    const ox = obs.x - scrollX;
+    if (obs.type === 'gap' && ox < W && ox + obs.w > 0) {
+      ctx.clearRect(ox, GROUND_Y, obs.w, H - GROUND_Y);
+    }
+  }
+
+  for (const obs of level) {
+    const ox = obs.x - scrollX;
+    if (ox < -100 || ox > W + 100) continue;
+
+    if (obs.type === 'spike') {
+      ctx.fillStyle = '#e94560';
+      ctx.beginPath();
+      ctx.moveTo(ox, GROUND_Y);
+      ctx.lineTo(ox + 15, GROUND_Y - 30);
+      ctx.lineTo(ox + 30, GROUND_Y);
+      ctx.closePath();
+      ctx.fill();
+    } else if (obs.type === 'block') {
+      const by = GROUND_Y - obs.h;
+      ctx.fillStyle = '#533483';
+      ctx.fillRect(ox, by, obs.w, obs.h);
+      ctx.strokeStyle = '#00d4ff';
+      ctx.strokeRect(ox, by, obs.w, obs.h);
+    }
+  }
+
+  ctx.save();
+  ctx.translate(player.x + player.w/2, player.y + player.h/2);
+  ctx.rotate(player.rot);
+  ctx.fillStyle = '#00d4ff';
+  ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-player.w/2, -player.h/2, player.w, player.h);
+  ctx.restore();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
